@@ -61,10 +61,10 @@ func (t *Throttle) Value(now time.Time) int {
 }
 
 func (t *Throttle) ValueTs(ts int64) int {
-	return int(t.ValueTsCost(ts) / t.Price)
+	return int(t.Bucket.Value(ts) / t.Price)
 }
 
-func (t *Bucket) ValueTsCost(ts int64) int64 {
+func (t *Bucket) Value(ts int64) int64 {
 	t.advance(ts)
 
 	return ts - t.lastts
@@ -75,10 +75,10 @@ func (t *Throttle) Have(now time.Time, n int) bool {
 }
 
 func (t *Throttle) HaveTs(ts int64, n int) bool {
-	return t.HaveTsCost(ts, t.Price*int64(n))
+	return t.Bucket.Have(ts, t.Price*int64(n))
 }
 
-func (t *Bucket) HaveTsCost(ts, cost int64) bool {
+func (t *Bucket) Have(ts, cost int64) bool {
 	t.advance(ts)
 
 	return t.tokens(ts) >= cost
@@ -89,11 +89,11 @@ func (t *Throttle) Take(now time.Time, n int) bool {
 }
 
 func (t *Throttle) TakeTs(ts int64, n int) bool {
-	return t.TakeTsCost(ts, t.Price*int64(n))
+	return t.Bucket.Take(ts, t.Price*int64(n))
 }
 
-func (t *Bucket) TakeTsCost(ts, cost int64) bool {
-	if !t.HaveTsCost(ts, cost) {
+func (t *Bucket) Take(ts, cost int64) bool {
+	if !t.Have(ts, cost) {
 		return false
 	}
 
@@ -107,10 +107,10 @@ func (t *Throttle) Borrow(now time.Time, n int) time.Duration {
 }
 
 func (t *Throttle) BorrowTs(ts int64, n int) time.Duration {
-	return t.BorrowTsCost(ts, t.Price*int64(n))
+	return t.Bucket.Borrow(ts, t.Price*int64(n))
 }
 
-func (t *Bucket) BorrowTsCost(ts, cost int64) time.Duration {
+func (t *Bucket) Borrow(ts, cost int64) time.Duration {
 	t.advance(ts)
 	t.spend(cost)
 
@@ -127,11 +127,11 @@ func (t *Throttle) Wait(ctx context.Context, now time.Time, n int) error {
 }
 
 func (t *Throttle) WaitTs(ctx context.Context, ts int64, n int) error {
-	return t.WaitTsCost(ctx, ts, t.Price*int64(n))
+	return t.Bucket.Wait(ctx, ts, t.Price*int64(n))
 }
 
-func (t *Bucket) WaitTsCost(ctx context.Context, ts, cost int64) error {
-	d := t.BorrowTsCost(ts, cost)
+func (t *Bucket) Wait(ctx context.Context, ts, cost int64) error {
+	d := t.Borrow(ts, cost)
 	if d == 0 {
 		return nil
 	}
@@ -153,10 +153,10 @@ func (t *Throttle) SetValue(now time.Time, n int) {
 }
 
 func (t *Throttle) SetValueTs(ts int64, n int) {
-	t.SetValueTsCost(ts, t.Price*int64(n))
+	t.Bucket.SetValue(ts, t.Price*int64(n))
 }
 
-func (t *Bucket) SetValueTsCost(ts, cost int64) {
+func (t *Bucket) SetValue(ts, cost int64) {
 	t.lastts = ts - cost
 }
 
@@ -165,10 +165,10 @@ func (t *Throttle) Return(now time.Time, n int) {
 }
 
 func (t *Throttle) ReturnTs(ts int64, n int) {
-	t.ReturnTsCost(ts, t.Price*int64(n))
+	t.Bucket.Return(ts, t.Price*int64(n))
 }
 
-func (t *Bucket) ReturnTsCost(ts, cost int64) {
+func (t *Bucket) Return(ts, cost int64) {
 	t.spend(-cost)
 }
 
