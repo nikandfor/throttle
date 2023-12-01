@@ -1,3 +1,3 @@
 module nikand.dev/go/throttle
 
-go 1.0
+go 1.10
