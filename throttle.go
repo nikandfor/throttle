@@ -21,9 +21,9 @@ func NewBucket(ts, limit int64) *Bucket {
 	return &Bucket{lastts: ts, Limit: limit}
 }
 
-func (t *Bucket) Reset(ts, limit int64) {
-	t.lastts = ts
-	t.Limit = limit
+func (b *Bucket) Reset(ts, limit int64) {
+	b.lastts = ts
+	b.Limit = limit
 }
 
 func NewRateLimit(value, rate, limit float64) *Throttle {
@@ -45,76 +45,76 @@ func NewRateWindow(value, rate float64, window time.Duration) *Throttle {
 }
 
 func New(ts, price, limit int64) *Throttle {
-	t := &Throttle{}
-	t.Reset(ts, price, limit)
+	b := &Throttle{}
+	b.Reset(ts, price, limit)
 
-	return t
+	return b
 }
 
-func (t *Throttle) Reset(ts, price, limit int64) {
-	t.Bucket.Reset(ts, limit)
-	t.Price = price
+func (b *Throttle) Reset(ts, price, limit int64) {
+	b.Bucket.Reset(ts, limit)
+	b.Price = price
 }
 
-func (t *Throttle) Value(now time.Time) int {
-	return t.ValueTs(now.UnixNano())
+func (b *Throttle) ValueT(now time.Time) int {
+	return b.Value(now.UnixNano())
 }
 
-func (t *Throttle) ValueTs(ts int64) int {
-	return int(t.Bucket.Value(ts) / t.Price)
+func (b *Throttle) Value(ts int64) int {
+	return int(b.Bucket.Value(ts) / b.Price)
 }
 
-func (t *Bucket) Value(ts int64) int64 {
-	t.advance(ts)
+func (b *Bucket) Value(ts int64) int64 {
+	b.advance(ts)
 
-	return ts - t.lastts
+	return ts - b.lastts
 }
 
-func (t *Throttle) Have(now time.Time, n int) bool {
-	return t.HaveTs(now.UnixNano(), n)
+func (b *Throttle) HaveT(now time.Time, n int) bool {
+	return b.Have(now.UnixNano(), n)
 }
 
-func (t *Throttle) HaveTs(ts int64, n int) bool {
-	return t.Bucket.Have(ts, t.Price*int64(n))
+func (b *Throttle) Have(ts int64, n int) bool {
+	return b.Bucket.Have(ts, b.Price*int64(n))
 }
 
-func (t *Bucket) Have(ts, cost int64) bool {
-	t.advance(ts)
+func (b *Bucket) Have(ts, cost int64) bool {
+	b.advance(ts)
 
-	return t.tokens(ts) >= cost
+	return b.tokens(ts) >= cost
 }
 
-func (t *Throttle) Take(now time.Time, n int) bool {
-	return t.TakeTs(now.UnixNano(), n)
+func (b *Throttle) TakeT(now time.Time, n int) bool {
+	return b.Take(now.UnixNano(), n)
 }
 
-func (t *Throttle) TakeTs(ts int64, n int) bool {
-	return t.Bucket.Take(ts, t.Price*int64(n))
+func (b *Throttle) Take(ts int64, n int) bool {
+	return b.Bucket.Take(ts, b.Price*int64(n))
 }
 
-func (t *Bucket) Take(ts, cost int64) bool {
-	if !t.Have(ts, cost) {
+func (b *Bucket) Take(ts, cost int64) bool {
+	if !b.Have(ts, cost) {
 		return false
 	}
 
-	t.spend(cost)
+	b.spend(cost)
 
 	return true
 }
 
-func (t *Throttle) Borrow(now time.Time, n int) time.Duration {
-	return t.BorrowTs(now.UnixNano(), n)
+func (b *Throttle) BorrowT(now time.Time, n int) time.Duration {
+	return b.Borrow(now.UnixNano(), n)
 }
 
-func (t *Throttle) BorrowTs(ts int64, n int) time.Duration {
-	return t.Bucket.Borrow(ts, t.Price*int64(n))
+func (b *Throttle) Borrow(ts int64, n int) time.Duration {
+	return b.Bucket.Borrow(ts, b.Price*int64(n))
 }
 
-func (t *Bucket) Borrow(ts, cost int64) time.Duration {
-	t.advance(ts)
-	t.spend(cost)
+func (b *Bucket) Borrow(ts, cost int64) time.Duration {
+	b.advance(ts)
+	b.spend(cost)
 
-	d := time.Duration(t.lastts - ts)
+	d := time.Duration(b.lastts - ts)
 	if d < 0 {
 		d = 0
 	}
@@ -122,16 +122,16 @@ func (t *Bucket) Borrow(ts, cost int64) time.Duration {
 	return d
 }
 
-func (t *Throttle) Wait(ctx context.Context, now time.Time, n int) error {
-	return t.WaitTs(ctx, now.UnixNano(), n)
+func (b *Throttle) WaitT(ctx context.Context, now time.Time, n int) error {
+	return b.Wait(ctx, now.UnixNano(), n)
 }
 
-func (t *Throttle) WaitTs(ctx context.Context, ts int64, n int) error {
-	return t.Bucket.Wait(ctx, ts, t.Price*int64(n))
+func (b *Throttle) Wait(ctx context.Context, ts int64, n int) error {
+	return b.Bucket.Wait(ctx, ts, b.Price*int64(n))
 }
 
-func (t *Bucket) Wait(ctx context.Context, ts, cost int64) error {
-	d := t.Borrow(ts, cost)
+func (b *Bucket) Wait(ctx context.Context, ts, cost int64) error {
+	d := b.Borrow(ts, cost)
 	if d == 0 {
 		return nil
 	}
@@ -148,44 +148,44 @@ func (t *Bucket) Wait(ctx context.Context, ts, cost int64) error {
 	return nil
 }
 
-func (t *Throttle) SetValue(now time.Time, n int) {
-	t.SetValueTs(now.UnixNano(), n)
+func (b *Throttle) SetValueT(now time.Time, n int) {
+	b.SetValue(now.UnixNano(), n)
 }
 
-func (t *Throttle) SetValueTs(ts int64, n int) {
-	t.Bucket.SetValue(ts, t.Price*int64(n))
+func (b *Throttle) SetValue(ts int64, n int) {
+	b.Bucket.SetValue(ts, b.Price*int64(n))
 }
 
-func (t *Bucket) SetValue(ts, cost int64) {
-	t.lastts = ts - cost
+func (b *Bucket) SetValue(ts, cost int64) {
+	b.lastts = ts - cost
 }
 
-func (t *Throttle) Return(now time.Time, n int) {
-	t.ReturnTs(now.UnixNano(), n)
+func (b *Throttle) ReturnT(now time.Time, n int) {
+	b.Return(now.UnixNano(), n)
 }
 
-func (t *Throttle) ReturnTs(ts int64, n int) {
-	t.Bucket.Return(ts, t.Price*int64(n))
+func (b *Throttle) Return(ts int64, n int) {
+	b.Bucket.Return(ts, b.Price*int64(n))
 }
 
-func (t *Bucket) Return(ts, cost int64) {
-	t.spend(-cost)
+func (b *Bucket) Return(ts, cost int64) {
+	b.spend(-cost)
 }
 
-func (t *Bucket) advance(ts int64) {
-	tokens := ts - t.lastts
+func (b *Bucket) advance(ts int64) {
+	tokens := ts - b.lastts
 
-	if tokens > t.Limit {
-		tokens = t.Limit
+	if tokens > b.Limit {
+		tokens = b.Limit
 	}
 
-	t.lastts = ts - tokens
+	b.lastts = ts - tokens
 }
 
-func (t *Bucket) tokens(ts int64) int64 {
-	return ts - t.lastts
+func (b *Bucket) tokens(ts int64) int64 {
+	return ts - b.lastts
 }
 
-func (t *Bucket) spend(tokens int64) {
-	t.lastts += tokens
+func (b *Bucket) spend(tokens int64) {
+	b.lastts += tokens
 }
