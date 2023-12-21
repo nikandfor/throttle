@@ -9,16 +9,16 @@ type (
 	Backoff struct {
 		Bucket
 
-		price int64
+		Price time.Duration
 
-		MinPrice int64
-		MaxPrice int64
+		MinPrice time.Duration
+		MaxPrice time.Duration
 
-		Increase int64
+		Increase time.Duration
 		Factor   Fract
 		Jitter   Fract
 
-		Decrease   int64
+		Decrease   time.Duration
 		CoolFactor Fract
 		CoolJitter Fract
 	}
@@ -26,15 +26,17 @@ type (
 	Fract struct {
 		Num, Den uint16
 	}
+
+	dur = time.Duration
 )
 
-func NewBackoff(ts, price, limit int64) *Backoff {
+func NewBackoff(ts int64, price, limit time.Duration) *Backoff {
 	b := &Backoff{
 		MinPrice: price,
 		MaxPrice: limit,
 
-		Increase: price / 10,
-		Factor:   Fract{Num: 15, Den: 10},
+		Increase: price,
+		Factor:   Fract{Num: 17, Den: 10},
 		Jitter:   Fract{Num: 1, Den: 10},
 
 		Decrease:   price / 6,
@@ -47,13 +49,9 @@ func NewBackoff(ts, price, limit int64) *Backoff {
 	return b
 }
 
-func (b *Backoff) Reset(ts, price, limit int64) {
+func (b *Backoff) Reset(ts int64, price, limit time.Duration) {
 	b.Bucket.Reset(ts, limit)
-	b.price = price
-}
-
-func (b *Backoff) Price() int64 {
-	return b.price
+	b.Price = price
 }
 
 func (b *Backoff) BackOffT(now time.Time) { b.BackOff(now.UnixNano()) }
@@ -61,7 +59,7 @@ func (b *Backoff) BackOffT(now time.Time) { b.BackOff(now.UnixNano()) }
 func (b *Backoff) BackOff(ts int64) {
 	b.advance(ts)
 
-	p := b.price
+	p := b.Price
 
 	if p < b.MinPrice {
 		p = b.MinPrice
@@ -77,7 +75,7 @@ func (b *Backoff) BackOff(ts int64) {
 		p = b.MaxPrice
 	}
 
-	b.price = p
+	b.Price = p
 }
 
 func (b *Backoff) CoolOffT(now time.Time) { b.CoolOff(now.UnixNano()) }
@@ -85,7 +83,7 @@ func (b *Backoff) CoolOffT(now time.Time) { b.CoolOff(now.UnixNano()) }
 func (b *Backoff) CoolOff(ts int64) {
 	b.advance(ts)
 
-	p := b.price
+	p := b.Price
 
 	//	println("ini", p)
 
@@ -104,74 +102,74 @@ func (b *Backoff) CoolOff(ts int64) {
 
 	//	println("res", p)
 
-	b.price = p
+	b.Price = p
 }
 
 func (b *Backoff) Recover() {
-	b.price = b.MinPrice
+	b.Price = b.MinPrice
 }
 
-func (b *Backoff) ValueT(now time.Time) int {
+func (b *Backoff) ValueT(now time.Time) time.Duration {
 	return b.Value(now.UnixNano())
 }
 
-func (b *Backoff) Value(ts int64) int {
-	return int(b.Bucket.Value(ts) / b.price)
+func (b *Backoff) Value(ts int64) time.Duration {
+	return b.Bucket.Value(ts)
 }
 
-func (b *Backoff) HaveT(now time.Time, n int) bool {
-	return b.Have(now.UnixNano(), n)
+func (b *Backoff) HaveT(now time.Time) bool {
+	return b.Have(now.UnixNano())
 }
 
-func (b *Backoff) Have(ts int64, n int) bool {
-	return b.Bucket.Have(ts, b.price*int64(n))
+func (b *Backoff) Have(ts int64) bool {
+	return b.Bucket.Have(ts, b.Price)
 }
 
-func (b *Backoff) TakeT(now time.Time, n int) bool {
-	return b.Take(now.UnixNano(), n)
+func (b *Backoff) TakeT(now time.Time) bool {
+	return b.Take(now.UnixNano())
 }
 
-func (b *Backoff) Take(ts int64, n int) bool {
-	return b.Bucket.Take(ts, b.price*int64(n))
+func (b *Backoff) Take(ts int64) bool {
+	return b.Bucket.Take(ts, b.Price)
 }
 
-func (b *Backoff) BorrowT(now time.Time, n int) time.Duration {
-	return b.Borrow(now.UnixNano(), n)
+func (b *Backoff) BorrowT(now time.Time) time.Duration {
+	return b.Borrow(now.UnixNano())
 }
 
-func (b *Backoff) Borrow(ts int64, n int) time.Duration {
-	return b.Bucket.Borrow(ts, b.price*int64(n))
+func (b *Backoff) Borrow(ts int64) time.Duration {
+	return b.Bucket.Borrow(ts, b.Price)
 }
 
-func (b *Backoff) WaitT(ctx context.Context, now time.Time, n int) error {
-	return b.Wait(ctx, now.UnixNano(), n)
+func (b *Backoff) WaitT(ctx context.Context, now time.Time) error {
+	return b.Wait(ctx, now.UnixNano())
 }
 
-func (b *Backoff) Wait(ctx context.Context, ts int64, n int) error {
-	return b.Bucket.Wait(ctx, ts, b.price*int64(n))
+func (b *Backoff) Wait(ctx context.Context, ts int64) error {
+	return b.Bucket.Wait(ctx, ts, b.Price)
 }
 
-func (b *Backoff) SetValueT(now time.Time, n int) {
-	b.SetValue(now.UnixNano(), n)
+func (b *Backoff) SetValueT(now time.Time, cost time.Duration) {
+	b.SetValue(now.UnixNano(), cost)
 }
 
-func (b *Backoff) SetValue(ts int64, n int) {
-	b.Bucket.SetValue(ts, b.price*int64(n))
+func (b *Backoff) SetValue(ts int64, cost time.Duration) {
+	b.Bucket.SetValue(ts, cost)
 }
 
-func (b *Backoff) ReturnT(now time.Time, n int) {
-	b.Return(now.UnixNano(), n)
+func (b *Backoff) ReturnT(now time.Time, cost time.Duration) {
+	b.Return(now.UnixNano(), cost)
 }
 
-func (b *Backoff) Return(ts int64, n int) {
-	b.Bucket.Return(ts, b.price*int64(n))
+func (b *Backoff) Return(ts int64, cost time.Duration) {
+	b.Bucket.Return(ts, cost)
 }
 
-func (f Fract) Mul(p int64) int64 {
-	return p * int64(f.Num) / int64(f.Den)
+func (f Fract) Mul(p time.Duration) time.Duration {
+	return p * time.Duration(f.Num) / time.Duration(f.Den)
 }
 
-func fastrand(ts, j int64) int64 {
+func fastrand(ts int64, j time.Duration) time.Duration {
 	r := uint64(ts) * 0x1e35a7bd >> 32
-	return int64(r)%(2*j) - j
+	return time.Duration(r)%(2*j) - j
 }
