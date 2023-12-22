@@ -30,6 +30,10 @@ type (
 	dur = time.Duration
 )
 
+func NewBackoffNow(price, limit time.Duration) *Backoff {
+	return NewBackoff(time.Now().UnixNano(), price, limit)
+}
+
 func NewBackoff(ts int64, price, limit time.Duration) *Backoff {
 	b := &Backoff{
 		MinPrice: price,
@@ -52,6 +56,27 @@ func NewBackoff(ts int64, price, limit time.Duration) *Backoff {
 func (b *Backoff) Reset(ts int64, price, limit time.Duration) {
 	b.Bucket.Reset(ts, limit)
 	b.Price = price
+}
+
+func (b *Backoff) AutoOffNow() {
+	b.AutoOffT(time.Now())
+}
+
+func (b *Backoff) AutoOffT(t time.Time) {
+	b.AutoOff(t.UnixNano())
+}
+
+func (b *Backoff) AutoOff(ts int64) {
+	tk := b.Bucket.tokens(ts)
+
+	switch {
+	case tk <= 2*b.Price:
+		b.BackOff(ts)
+	case tk <= b.MaxPrice:
+		// keep the same
+	default:
+		b.CoolOff(ts)
+	}
 }
 
 func (b *Backoff) BackOffT(now time.Time) { b.BackOff(now.UnixNano()) }

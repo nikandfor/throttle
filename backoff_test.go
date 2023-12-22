@@ -19,12 +19,13 @@ func TestBackoff(tb *testing.T) {
 		// running the task
 		ts += int64(time.Second)
 
-		b.BackOff(ts)
 		d := b.Borrow(ts)
 
 		pp(ts, "backoff", i, d)
 
 		ts += int64(d)
+
+		b.BackOff(ts)
 	}
 
 	tb.Logf("cooling off")
@@ -33,12 +34,13 @@ func TestBackoff(tb *testing.T) {
 		// running the task
 		ts += int64(time.Second)
 
-		b.CoolOff(ts)
 		d := b.Borrow(ts)
 
 		pp(ts, "cooloff", i, d)
 
 		ts += int64(d)
+
+		b.CoolOff(ts)
 	}
 }
 
