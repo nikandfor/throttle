@@ -56,6 +56,12 @@ func (b *Bucket) Borrow(ts int64, cost time.Duration) time.Duration {
 }
 
 func (b *Bucket) Wait(ctx context.Context, ts int64, cost time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	d := b.Borrow(ts, cost)
 	if d == 0 {
 		return nil

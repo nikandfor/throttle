@@ -21,6 +21,9 @@ type (
 		Decrease   time.Duration
 		CoolFactor Fract
 		CoolJitter Fract
+
+		AutoBackOff Fract // Price multiplier
+		AutoCoolOff Fract
 	}
 
 	Fract struct {
@@ -30,25 +33,28 @@ type (
 	dur = time.Duration
 )
 
-func NewBackoffNow(price, limit time.Duration) *Backoff {
-	return NewBackoff(time.Now().UnixNano(), price, limit)
+func NewBackoffT(t time.Time, minPrice, maxPrice time.Duration) *Backoff {
+	return NewBackoff(t.UnixNano(), minPrice, maxPrice)
 }
 
-func NewBackoff(ts int64, price, limit time.Duration) *Backoff {
+func NewBackoff(ts int64, minPrice, maxPrice time.Duration) *Backoff {
 	b := &Backoff{
-		MinPrice: price,
-		MaxPrice: limit,
+		MinPrice: minPrice,
+		MaxPrice: maxPrice,
 
-		Increase: price,
+		Increase: minPrice,
 		Factor:   Fract{Num: 17, Den: 10},
 		Jitter:   Fract{Num: 1, Den: 10},
 
-		Decrease:   price / 6,
+		Decrease:   minPrice / 6,
 		CoolFactor: Fract{Num: 4, Den: 10},
 		CoolJitter: Fract{Num: 1, Den: 10},
+
+		AutoBackOff: Fract{Num: 2, Den: 1},
+		AutoCoolOff: Fract{Num: 8, Den: 1},
 	}
 
-	b.Reset(ts, price, limit)
+	b.Reset(ts, 0, 0)
 
 	return b
 }
@@ -58,8 +64,14 @@ func (b *Backoff) Reset(ts int64, price, limit time.Duration) {
 	b.Price = price
 }
 
-func (b *Backoff) AutoOffNow() {
-	b.AutoOffT(time.Now())
+func (b *Backoff) AutoWaitT(ctx context.Context, t time.Time) error {
+	return b.AutoWait(ctx, t.UnixNano())
+}
+
+func (b *Backoff) AutoWait(ctx context.Context, ts int64) error {
+	b.AutoOff(ts)
+
+	return b.Wait(ctx, ts)
 }
 
 func (b *Backoff) AutoOffT(t time.Time) {
@@ -69,12 +81,35 @@ func (b *Backoff) AutoOffT(t time.Time) {
 func (b *Backoff) AutoOff(ts int64) {
 	tk := b.Bucket.tokens(ts)
 
-	switch {
-	case tk <= 2*b.Price:
+	if tk <= b.AutoBackOff.Mul(b.Price) {
 		b.BackOff(ts)
-	case tk <= b.MaxPrice:
-		// keep the same
-	default:
+		return
+	}
+
+	for tk > b.AutoCoolOff.Mul(b.Price) {
+		tk -= b.Price
+		b.CoolOff(ts)
+	}
+}
+
+func (b *Backoff) AutoErrWaitT(ctx context.Context, t time.Time, err error) error {
+	return b.AutoErrWait(ctx, t.UnixNano(), err)
+}
+
+func (b *Backoff) AutoErrWait(ctx context.Context, ts int64, err error) error {
+	b.AutoErr(ts, err)
+
+	return b.Wait(ctx, ts)
+}
+
+func (b *Backoff) AutoErrT(t time.Time, err error) {
+	b.AutoErr(t.UnixNano(), err)
+}
+
+func (b *Backoff) AutoErr(ts int64, err error) {
+	if err != nil {
+		b.BackOff(ts)
+	} else {
 		b.CoolOff(ts)
 	}
 }
@@ -101,6 +136,7 @@ func (b *Backoff) BackOff(ts int64) {
 	}
 
 	b.Price = p
+	b.Limit = p
 }
 
 func (b *Backoff) CoolOffT(now time.Time) { b.CoolOff(now.UnixNano()) }
@@ -128,6 +164,7 @@ func (b *Backoff) CoolOff(ts int64) {
 	//	println("res", p)
 
 	b.Price = p
+	b.Limit = p
 }
 
 func (b *Backoff) Recover() {
@@ -191,6 +228,10 @@ func (b *Backoff) Return(ts int64, cost time.Duration) {
 }
 
 func (f Fract) Mul(p time.Duration) time.Duration {
+	if f == (Fract{}) {
+		return p
+	}
+
 	return p * time.Duration(f.Num) / time.Duration(f.Den)
 }
 
