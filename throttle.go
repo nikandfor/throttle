@@ -12,24 +12,6 @@ type (
 	}
 )
 
-func NewRateLimit(value, rate, limit float64) *Throttle {
-	ts := time.Now().UnixNano()
-	price := time.Duration(1e9 / rate)
-	lim := time.Duration(1e9 * rate * limit)
-	tokens := ts - int64(1e9/rate*value)
-
-	return New(ts-tokens, price, lim)
-}
-
-func NewRateWindow(value, rate float64, window time.Duration) *Throttle {
-	ts := time.Now().UnixNano()
-	price := time.Duration(1e9 / rate)
-	limit := window
-	tokens := ts - int64(1e9/rate*value)
-
-	return New(ts-tokens, price, limit)
-}
-
 func New(ts int64, price, limit time.Duration) *Throttle {
 	b := &Throttle{}
 	b.Reset(ts, price, limit)
@@ -96,4 +78,8 @@ func (b *Throttle) ReturnT(now time.Time, n int) {
 
 func (b *Throttle) Return(ts int64, n int) {
 	b.Bucket.Return(ts, b.Price*dur(n))
+}
+
+func Price(tokens int64, per time.Duration) time.Duration {
+	return per / time.Duration(tokens)
 }
