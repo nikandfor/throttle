@@ -8,37 +8,35 @@
 # throttle
 
 `throttle` is an efficient rate limiter built on integer arithmetics.
+The implementation is inspired by one from the Linux kernel.
 
 ## Usage
 
 Create limiter
 ```go
-t := throttle.NewRateWindow(
-		2000,                         // initial tokens
-		1000 / time.Second.Seconds(), // 1000 tokens per second
-		2 * time.Second,              // window size
-	)
+// limit to 100 requests per minute, at most 10 in a burst, start from 0 tokens available
 
-// smooth 1KB per second with at most 128 bytes at a time
-t = throttle.NewRateLimit(
-		128,
-		1000 / time.Second.Seconds(),
-		128,
-	)
+ts := time.Now().UnixNano()
+price := throttle.Price(100, time.Minute)
+limit := 10 * price
 
-// 3 MB per minute allowing to spend it all at once
-// but start with only 1 MB available
-t = throttle.NewRateLimit(
-		1_000_000,
-		3_000_000 / time.Minute.Seconds(),
-		3_000_000,
-	)
+t := throttle.New(ts, price, limit)
+
+// limit bandwidth to 100 KB/s, allow 1 MB as a burst, start from full burst available
+
+ts := 0
+price := throttle.Price(100 * 1024, time.Second)
+limit := 1 * 1024 * 1024 / price
+
+t := throttle.New(ts, price, limit)
+
+t.SetValueT(time.Now().UnixNano(), 512 * 1024) // reset available value to 512 KB
 ```
 
 Take or drop
 ```go
 func (c *Conn) Write(p []byte) (int, error) {
-	if !t.Take(time.Now(), len(p)) {
+	if !t.TakeT(time.Now(), len(p)) {
 		return 0, ErrLimited
 	}
 
@@ -49,7 +47,7 @@ func (c *Conn) Write(p []byte) (int, error) {
 Borrow and wait
 ```go
 func (c *Conn) Write(p []byte) (int, error) {
-	delay := l.Borrow(time.Now(), len(p))
+	delay := l.BorrowT(time.Now(), len(p))
 
 	if delay != 0 {
 		time.Sleep(delay)
@@ -64,14 +62,12 @@ Write as much as we can
 func (c *Conn) Write(p []byte) (int, error) {
 	now := time.Now()
 
-	val := l.Value(now)
-
-	n := int(val)
+	n := l.Value(now)
 	if n > len(p) {
 		n = len(p)
 	}
 
-	_ = l.Take(now, float64(n)) // must be true
+	_ = l.TakeT(now, n) // must be true
 
 	n, err := c.Conn.Write(p[:n])
 	if err != nil {
@@ -84,3 +80,15 @@ func (c *Conn) Write(p []byte) (int, error) {
 	return n, err
 }
 ```
+
+## How it works
+
+There is a bucket that collects time passing.
+It can be real nanoseconds, can be seconds, can be monotonic clock ticks, whatever you pass as ts.
+XxxxxT methods use nanoseconds of wall time.
+Each time we pass ts to any method, number of available time in the bucket is updated to the provided point in time.
+
+Bucket has a `limit`, no more than that is kept.
+
+There is a `price`, which is how much time each `token` costs.
+It's allowed to take `n` `tokens` if we have `n * price` time in the bucket.
