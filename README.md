@@ -26,7 +26,7 @@ t := throttle.New(ts, price, limit)
 
 ts := 0
 price := throttle.Price(100 * 1024, time.Second)
-limit := 1 * 1024 * 1024 / price
+limit := 1 * 1024 * 1024 * price
 
 t := throttle.New(ts, price, limit)
 
