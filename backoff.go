@@ -9,21 +9,17 @@ type (
 	Backoff struct {
 		Bucket
 
-		Price time.Duration
+		backts int64
+		delay  time.Duration
 
-		MinPrice time.Duration
-		MaxPrice time.Duration
+		MinDelay time.Duration
+		MaxDelay time.Duration
 
 		Increase time.Duration
 		Factor   Fract
 		Jitter   Fract
 
-		Decrease   time.Duration
-		CoolFactor Fract
-		CoolJitter Fract
-
-		AutoBackOff Fract // Price multiplier
-		AutoCoolOff Fract
+		Recovery time.Duration
 	}
 
 	Fract struct {
@@ -33,142 +29,101 @@ type (
 	dur = time.Duration
 )
 
-func NewBackoffT(t time.Time, minPrice, maxPrice time.Duration) *Backoff {
-	return NewBackoff(t.UnixNano(), minPrice, maxPrice)
+func NewBackoffT(t time.Time, minDelay, maxDelay, limit time.Duration) *Backoff {
+	return NewBackoff(t.UnixNano(), minDelay, maxDelay, limit)
 }
 
-func NewBackoff(ts int64, minPrice, maxPrice time.Duration) *Backoff {
+func NewBackoff(ts int64, minDelay, maxDelay, limit time.Duration) *Backoff {
 	b := &Backoff{
-		MinPrice: minPrice,
-		MaxPrice: maxPrice,
+		MinDelay: minDelay,
+		MaxDelay: maxDelay,
 
-		Increase: minPrice,
+		Increase: minDelay,
 		Factor:   Fract{Num: 17, Den: 10},
 		Jitter:   Fract{Num: 1, Den: 10},
 
-		Decrease:   minPrice / 6,
-		CoolFactor: Fract{Num: 4, Den: 10},
-		CoolJitter: Fract{Num: 1, Den: 10},
-
-		AutoBackOff: Fract{Num: 2, Den: 1},
-		AutoCoolOff: Fract{Num: 8, Den: 1},
+		Recovery: time.Minute,
 	}
 
-	b.Reset(ts, 0, 0)
+	b.Reset(ts, 0, limit)
 
 	return b
 }
 
-func (b *Backoff) Reset(ts int64, price, limit time.Duration) {
+func (b *Backoff) Reset(ts int64, delay, limit time.Duration) {
 	b.Bucket.Reset(ts, limit)
-	b.Price = price
+	b.delay = delay
 }
 
-func (b *Backoff) AutoWaitT(ctx context.Context, t time.Time) error {
-	return b.AutoWait(ctx, t.UnixNano())
-}
+func (b *Backoff) BackoffT(now time.Time) { b.Backoff(now.UnixNano()) }
 
-func (b *Backoff) AutoWait(ctx context.Context, ts int64) error {
-	b.AutoOff(ts)
-
-	return b.Wait(ctx, ts)
-}
-
-func (b *Backoff) AutoOffT(t time.Time) {
-	b.AutoOff(t.UnixNano())
-}
-
-func (b *Backoff) AutoOff(ts int64) {
-	tk := b.Bucket.tokens(ts)
-
-	if tk <= b.AutoBackOff.Mul(b.Price) {
-		b.BackOff(ts)
-		return
-	}
-
-	for tk > b.AutoCoolOff.Mul(b.Price) {
-		tk -= b.Price
-		b.CoolOff(ts)
-	}
-}
-
-func (b *Backoff) AutoErrWaitT(ctx context.Context, t time.Time, err error) error {
-	return b.AutoErrWait(ctx, t.UnixNano(), err)
-}
-
-func (b *Backoff) AutoErrWait(ctx context.Context, ts int64, err error) error {
-	b.AutoErr(ts, err)
-
-	return b.Wait(ctx, ts)
-}
-
-func (b *Backoff) AutoErrT(t time.Time, err error) {
-	b.AutoErr(t.UnixNano(), err)
-}
-
-func (b *Backoff) AutoErr(ts int64, err error) {
-	if err != nil {
-		b.BackOff(ts)
-	} else {
-		b.CoolOff(ts)
-	}
-}
-
-func (b *Backoff) BackOffT(now time.Time) { b.BackOff(now.UnixNano()) }
-
-func (b *Backoff) BackOff(ts int64) {
+func (b *Backoff) Backoff(ts int64) {
 	b.advance(ts)
 
-	p := b.Price
+	d := b.Delay(ts)
 
-	if p < b.MinPrice {
-		p = b.MinPrice
+	if d < b.MinDelay {
+		d = b.MinDelay
 	}
 
-	p += b.Increase
-	p = b.Factor.Mul(p)
+	d += b.Increase
+	d = b.Factor.Mul(d)
 
-	j := b.Jitter.Mul(p)
-	p += fastrand(ts, j)
+	j := b.Jitter.Mul(d)
+	d += fastrand(ts, j)
 
-	if p > b.MaxPrice {
-		p = b.MaxPrice
+	if d > b.MaxDelay {
+		d = b.MaxDelay
 	}
 
-	b.Price = p
-	b.Limit = p
+	b.delay = d
+	//	b.Limit = d
+
+	b.backts = ts
 }
 
-func (b *Backoff) CoolOffT(now time.Time) { b.CoolOff(now.UnixNano()) }
+func (b *Backoff) DelayT(t time.Time) time.Duration {
+	return b.Delay(t.UnixNano())
+}
 
-func (b *Backoff) CoolOff(ts int64) {
-	b.advance(ts)
+func (b *Backoff) Delay(ts int64) time.Duration {
+	const eps = time.Millisecond
 
-	p := b.Price
-
-	//	println("ini", p)
-
-	p -= b.Decrease
-	//	println("dec", p)
-	p = b.CoolFactor.Mul(p)
-	//	println("mul", p)
-
-	j := b.CoolJitter.Mul(p)
-	p += fastrand(ts, j)
-	//	println("jtr", p)
-
-	if p < b.MinPrice {
-		p = b.MinPrice
+	//	defer func() { println("delay", ts, delay) }()
+	passed := time.Duration(ts - b.backts)
+	if passed > b.Recovery {
+		return b.MinDelay
+	}
+	if passed < eps {
+		return b.delay
 	}
 
-	//	println("res", p)
+	lt := b.backts
+	rt := b.backts + b.Recovery.Nanoseconds()
 
-	b.Price = p
-	b.Limit = p
+	l := b.delay
+	r := b.MinDelay
+
+	var delay time.Duration
+
+	for rt-lt > eps.Nanoseconds() {
+		mt := (lt + rt) >> 1
+		delay = (l + r) >> 1
+
+		if ts <= mt {
+			rt = mt
+			r = delay
+		} else {
+			lt = mt
+			l = delay
+		}
+	}
+
+	return delay
 }
 
 func (b *Backoff) Recover() {
-	b.Price = b.MinPrice
+	b.delay = b.MinDelay
 }
 
 func (b *Backoff) ValueT(now time.Time) time.Duration {
@@ -184,7 +139,7 @@ func (b *Backoff) HaveT(now time.Time) bool {
 }
 
 func (b *Backoff) Have(ts int64) bool {
-	return b.Bucket.Have(ts, b.Price)
+	return b.Bucket.Have(ts, b.Delay(ts))
 }
 
 func (b *Backoff) TakeT(now time.Time) bool {
@@ -192,7 +147,7 @@ func (b *Backoff) TakeT(now time.Time) bool {
 }
 
 func (b *Backoff) Take(ts int64) bool {
-	return b.Bucket.Take(ts, b.Price)
+	return b.Bucket.Take(ts, b.Delay(ts))
 }
 
 func (b *Backoff) BorrowT(now time.Time) time.Duration {
@@ -200,7 +155,7 @@ func (b *Backoff) BorrowT(now time.Time) time.Duration {
 }
 
 func (b *Backoff) Borrow(ts int64) time.Duration {
-	return b.Bucket.Borrow(ts, b.Price)
+	return b.Bucket.Borrow(ts, b.Delay(ts))
 }
 
 func (b *Backoff) WaitT(ctx context.Context, now time.Time) error {
@@ -208,7 +163,7 @@ func (b *Backoff) WaitT(ctx context.Context, now time.Time) error {
 }
 
 func (b *Backoff) Wait(ctx context.Context, ts int64) error {
-	return b.Bucket.Wait(ctx, ts, b.Price)
+	return b.Bucket.Wait(ctx, ts, b.Delay(ts))
 }
 
 func (b *Backoff) SetValueT(now time.Time, cost time.Duration) {

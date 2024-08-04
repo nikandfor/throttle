@@ -7,40 +7,31 @@ import (
 
 func TestBackoff(tb *testing.T) {
 	ts := int64(0)
-	b := NewBackoff(ts, time.Second/10, time.Minute)
+	b := NewBackoff(ts, time.Second/10, 10*time.Second, time.Second)
 
-	pp := func(ts int64, n string, i int, d time.Duration) {
-		tb.Logf("ts %8v %s step %3d  price %8v  dur %8v  val %8v", round(dur(ts)), n, i, round(b.Price), round(d), round(b.Value(ts)))
-	}
+	start := time.Hour
+	ts += start.Nanoseconds()
 
-	tb.Logf("backing off")
+	tb.Logf("%+v", b)
 
-	for i := 0; i < 10; i++ {
-		// running the task
-		ts += int64(time.Second)
+	for j := 0; j < 2; j++ {
+		for i := 0; i < 5; i++ {
+			d := b.Delay(ts)
 
-		d := b.Borrow(ts)
+			tb.Logf("backoff i %3d  ts %10v  %v", i, time.Duration(ts)-start, d)
 
-		pp(ts, "backoff", i, d)
+			ts += 1000 * time.Millisecond.Nanoseconds()
 
-		ts += int64(d)
+			b.Backoff(ts)
+		}
 
-		b.BackOff(ts)
-	}
+		for i := 0; i < 5; i++ {
+			d := b.Delay(ts)
 
-	tb.Logf("cooling off")
+			tb.Logf("cooloff i %3d  ts %10v  %v", i, time.Duration(ts)-start, d)
 
-	for i := 0; i < 10; i++ {
-		// running the task
-		ts += int64(time.Second)
-
-		d := b.Borrow(ts)
-
-		pp(ts, "cooloff", i, d)
-
-		ts += int64(d)
-
-		b.CoolOff(ts)
+			ts += 5000 * time.Millisecond.Nanoseconds()
+		}
 	}
 }
 

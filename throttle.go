@@ -13,20 +13,20 @@ import (
 type (
 	Throttle struct {
 		Bucket
-		Price time.Duration
+		Delay time.Duration
 	}
 )
 
-func New(ts int64, price, limit time.Duration) *Throttle {
+func New(ts int64, delay, limit time.Duration) *Throttle {
 	b := &Throttle{}
-	b.Reset(ts, price, limit)
+	b.Reset(ts, delay, limit)
 
 	return b
 }
 
-func (b *Throttle) Reset(ts int64, price, limit time.Duration) {
+func (b *Throttle) Reset(ts int64, delay, limit time.Duration) {
 	b.Bucket.Reset(ts, limit)
-	b.Price = price
+	b.Delay = delay
 }
 
 func (b *Throttle) ValueT(now time.Time) int {
@@ -35,7 +35,7 @@ func (b *Throttle) ValueT(now time.Time) int {
 
 // Value returns the number of tokens we have so far.
 func (b *Throttle) Value(ts int64) int {
-	return int(b.Bucket.Value(ts) / b.Price)
+	return int(b.Bucket.Value(ts) / b.Delay)
 }
 
 func (b *Throttle) HaveT(now time.Time, n int) bool {
@@ -44,7 +44,7 @@ func (b *Throttle) HaveT(now time.Time, n int) bool {
 
 // Have checks if we have n tokens to take.
 func (b *Throttle) Have(ts int64, n int) bool {
-	return b.Bucket.Have(ts, b.Price*dur(n))
+	return b.Bucket.Have(ts, b.Delay*dur(n))
 }
 
 func (b *Throttle) TakeT(now time.Time, n int) bool {
@@ -55,7 +55,7 @@ func (b *Throttle) TakeT(now time.Time, n int) bool {
 // It returns if it was enough tokens to take.
 // If operaion wasn't successful, tokens are not taken.
 func (b *Throttle) Take(ts int64, n int) bool {
-	return b.Bucket.Take(ts, b.Price*dur(n))
+	return b.Bucket.Take(ts, b.Delay*dur(n))
 }
 
 func (b *Throttle) BorrowT(now time.Time, n int) time.Duration {
@@ -69,7 +69,7 @@ func (b *Throttle) BorrowT(now time.Time, n int) time.Duration {
 //
 // Borrow even works if you ask more tokens than fit into the limit.
 func (b *Throttle) Borrow(ts int64, n int) time.Duration {
-	return b.Bucket.Borrow(ts, b.Price*dur(n))
+	return b.Bucket.Borrow(ts, b.Delay*dur(n))
 }
 
 func (b *Throttle) WaitT(ctx context.Context, now time.Time, n int) error {
@@ -79,7 +79,7 @@ func (b *Throttle) WaitT(ctx context.Context, now time.Time, n int) error {
 // Wait borrows n tokens and waits until we can use it.
 // It returns with ctx.Err() if context was canceled.
 func (b *Throttle) Wait(ctx context.Context, ts int64, n int) error {
-	return b.Bucket.Wait(ctx, ts, b.Price*dur(n))
+	return b.Bucket.Wait(ctx, ts, b.Delay*dur(n))
 }
 
 func (b *Throttle) SetValueT(now time.Time, n int) {
@@ -88,7 +88,7 @@ func (b *Throttle) SetValueT(now time.Time, n int) {
 
 // SetValue sets the number of tokens available at the time ts.
 func (b *Throttle) SetValue(ts int64, n int) {
-	b.Bucket.SetValue(ts, b.Price*dur(n))
+	b.Bucket.SetValue(ts, b.Delay*dur(n))
 }
 
 func (b *Throttle) ReturnT(now time.Time, n int) {
@@ -97,11 +97,11 @@ func (b *Throttle) ReturnT(now time.Time, n int) {
 
 // Return puts n tokens back. You can add them even if you didn't take it.
 func (b *Throttle) Return(ts int64, n int) {
-	b.Bucket.Return(ts, b.Price*dur(n))
+	b.Bucket.Return(ts, b.Delay*dur(n))
 }
 
-// Price calculate a price of one token to achive limit of tokens/per.
+// Delay calculate a delay of one token to achive limit of tokens/per.
 // It's used for Throttle creation.
-func Price(tokens int64, per time.Duration) time.Duration {
+func Delay(tokens int64, per time.Duration) time.Duration {
 	return per / time.Duration(tokens)
 }

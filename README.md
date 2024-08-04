@@ -17,18 +17,18 @@ Create limiter
 // limit to 100 requests per minute, at most 10 in a burst, start from 0 tokens available
 
 ts := time.Now().UnixNano()
-price := throttle.Price(100, time.Minute)
-limit := 10 * price
+delay := throttle.Delay(100, time.Minute)
+limit := 10 * delay
 
-t := throttle.New(ts, price, limit)
+t := throttle.New(ts, delay, limit)
 
 // limit bandwidth to 100 KB/s, allow 1 MB as a burst, start from full burst available
 
 ts := 0
-price := throttle.Price(100 * 1024, time.Second)
-limit := 1 * 1024 * 1024 * price
+delay := throttle.Delay(100 * 1024, time.Second)
+limit := 1 * 1024 * 1024 * delay
 
-t := throttle.New(ts, price, limit)
+t := throttle.New(ts, delay, limit)
 
 t.SetValueT(time.Now().UnixNano(), 512 * 1024) // reset available value to 512 KB
 ```
@@ -90,5 +90,5 @@ Each time we pass ts to any method, number of available time in the bucket is up
 
 Bucket has a `limit`, no more than that is kept.
 
-There is a `price`, which is how much time each `token` costs.
-It's allowed to take `n` `tokens` if we have `n * price` time in the bucket.
+There is a `delay`, which is how much time each `token` costs.
+It's allowed to take `n` `tokens` if we have `n * delay` time in the bucket.
