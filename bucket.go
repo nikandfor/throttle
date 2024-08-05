@@ -67,16 +67,7 @@ func (b *Bucket) Wait(ctx context.Context, ts int64, cost time.Duration) error {
 		return nil
 	}
 
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-
-	select {
-	case <-timer.C:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-
-	return nil
+	return Wait(ctx, d)
 }
 
 func (b *Bucket) SetValue(ts int64, cost time.Duration) {
@@ -103,4 +94,21 @@ func (b *Bucket) tokens(ts int64) time.Duration {
 
 func (b *Bucket) spend(tokens time.Duration) {
 	b.lastts += int64(tokens)
+}
+
+func Wait(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	return nil
 }
