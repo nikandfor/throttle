@@ -55,9 +55,9 @@ func (b *Backoff) Reset(ts int64, delay, limit time.Duration) {
 	b.delay = delay
 }
 
-func (b *Backoff) BackoffT(now time.Time) { b.Backoff(now.UnixNano()) }
+func (b *Backoff) BackoffT(now time.Time) time.Duration { return b.Backoff(now.UnixNano()) }
 
-func (b *Backoff) Backoff(ts int64) {
+func (b *Backoff) Backoff(ts int64) time.Duration {
 	b.advance(ts)
 
 	d := b.Delay(ts)
@@ -77,9 +77,10 @@ func (b *Backoff) Backoff(ts int64) {
 	}
 
 	b.delay = d
-	//	b.Limit = d
 
 	b.backts = ts
+
+	return d
 }
 
 func (b *Backoff) DelayT(t time.Time) time.Duration {
